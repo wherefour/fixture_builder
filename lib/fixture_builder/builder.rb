@@ -129,7 +129,13 @@ module FixtureBuilder
 
     def serialized_value_if_needed(table_klass, attr_name, value)
       if table_klass.respond_to?(:type_for_attribute)
-        if table_klass.type_for_attribute(attr_name).type == :jsonb || table_klass.type_for_attribute(attr_name).type == :json
+        if table_klass.type_for_attribute(attr_name).type == :datetime && value
+          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.minute).round(2).to_i
+          difference.zero? ? nil : "<%= #{difference}.minutes.from_now.to_s(:db) %>"
+        elsif table_klass.type_for_attribute(attr_name).type == :date && value
+          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.day).round(2).to_i
+          difference.zero? ? nil : "<%= #{difference}.days.from_now.to_s(:db) %>"
+        elsif table_klass.type_for_attribute(attr_name).type == :jsonb || table_klass.type_for_attribute(attr_name).type == :json
           value
         elsif table_klass.type_for_attribute(attr_name).respond_to?(:serialize)
           table_klass.type_for_attribute(attr_name).serialize(value)
@@ -156,5 +162,10 @@ module FixtureBuilder
     def fixture_file(table_name)
       fixtures_dir("#{table_name}.yml")
     end
+
+    def time_in_seconds(time)
+      time.to_time.to_f
+    end
+
   end
 end
