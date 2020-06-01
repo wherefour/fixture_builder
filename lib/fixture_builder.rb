@@ -3,6 +3,7 @@ require 'fixture_builder/configuration'
 require 'fixture_builder/namer'
 require 'fixture_builder/builder'
 require 'fixture_builder/fixtures_path'
+require 'pathname'
 
 module FixtureBuilder
   class << self

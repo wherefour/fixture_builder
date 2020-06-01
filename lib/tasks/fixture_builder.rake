@@ -3,7 +3,7 @@ namespace :spec do
     desc "Deletes the generated fixtures in spec/fixtures"
     task :clean do
       FileUtils.rm_f("tmp/fixture_builder.yml")
-      FileUtils.rm_f(Dir.glob("#{FixtureBuilder::FixturesPath.absolute_rails_fixtures_path}/*.yml"))
+      FileUtils.rm_f(Dir.glob("#{FixtureBuilder::FixturesPath.absolute_rails_fixtures_path}/**/*.yml"))
       puts "Automatically generated fixtures removed"
     end
 

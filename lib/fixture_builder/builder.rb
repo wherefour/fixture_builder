@@ -96,13 +96,14 @@ module FixtureBuilder
       Date::DATE_FORMATS[:default] = Date::DATE_FORMATS[:db]
       begin
         fixtures = tables.inject([]) do |files, table_name|
-          table_klass = table_name.classify.constantize rescue nil
-          if table_klass && table_klass < ActiveRecord::Base
+          table_klass = klass_by_table_name[table_name] rescue nil
+          if eligible_for_serialization(table_klass)
             rows = table_klass.unscoped do
               table_klass.order(:id).all.collect do |obj|
                 attrs = obj.attributes.select { |attr_name| table_klass.column_names.include?(attr_name) }
                 attrs.inject({}) do |hash, (attr_name, value)|
-                  hash[attr_name] = serialized_value_if_needed(table_klass, attr_name, value)
+                  serialized_value = value.present? ? serialized_value_if_needed(table_klass, attr_name, value) : nil
+                  hash[attr_name] =  serialized_value if serialized_value
                   hash
                 end
               end
@@ -129,11 +130,11 @@ module FixtureBuilder
 
     def serialized_value_if_needed(table_klass, attr_name, value)
       if table_klass.respond_to?(:type_for_attribute)
-        if table_klass.type_for_attribute(attr_name).type == :datetime && value
-          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.minute).round(2).to_i
+        if table_klass.type_for_attribute(attr_name).type == :datetime
+          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.minute).round(2).to_i rescue 0
           difference.zero? ? nil : "<%= #{difference}.minutes.from_now.to_s(:db) %>"
-        elsif table_klass.type_for_attribute(attr_name).type == :date && value
-          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.day).round(2).to_i
+        elsif table_klass.type_for_attribute(attr_name).type == :date
+          difference = ((time_in_seconds(value) - time_in_seconds(Time.zone.now)) / 1.day).round(2).to_i rescue 0
           difference.zero? ? nil : "<%= #{difference}.days.from_now.to_s(:db) %>"
         elsif table_klass.type_for_attribute(attr_name).type == :jsonb || table_klass.type_for_attribute(attr_name).type == :json
           value
@@ -153,6 +154,18 @@ module FixtureBuilder
       end
     end
 
+    def klass_by_table_name
+      @klass_by_table_name ||= ActiveRecord::Base
+                                   .descendants
+                                   .reject(&:abstract_class)
+                                   .group_by(&:table_name)
+                                   .transform_values { |klasses| klasses.min { |klass| klass.ancestors.size } }
+    end
+
+    def eligible_for_serialization(table_klass)
+      table_klass && table_klass < ActiveRecord::Base && table_klass.attribute_names.include?('id')
+    end
+
     def write_fixture_file(fixture_data, table_name)
       File.open(fixture_file(table_name), 'w') do |file|
         file.write fixture_data.to_yaml
@@ -160,7 +173,20 @@ module FixtureBuilder
     end
 
     def fixture_file(table_name)
-      fixtures_dir("#{table_name}.yml")
+      klass = klass_by_table_name[table_name]
+
+      fixture_file_name = klass.name.tableize
+
+      # Probably a dumb way of doing it, but it works for now
+      if fixture_file_name.count('/') > 0
+        namespace = fixture_file_name.split('/').take(fixture_file_name.count('/')).join('/')
+        file_name = fixture_file_name.split('/').last
+        fixture_namespace_directory = Pathname(fixtures_dir(namespace))
+        fixture_namespace_directory.mkpath
+        fixtures_dir("#{namespace}/#{file_name}.yml")
+      else
+        fixtures_dir("#{table_name}.yml")
+      end
     end
 
     def time_in_seconds(time)
